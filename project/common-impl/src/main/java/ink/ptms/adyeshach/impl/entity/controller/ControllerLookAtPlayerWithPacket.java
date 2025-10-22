@@ -68,7 +68,7 @@ public class ControllerLookAtPlayerWithPacket extends Controller {
 
     /**
      * 获取上次看向角度
-     * 
+     *
      * @param entity 实体实例
      * @param player 玩家
      * @return 上次的角度，如果不存在则返回 null
@@ -80,6 +80,61 @@ public class ControllerLookAtPlayerWithPacket extends Controller {
         }
         Map<String, Angle> angles = LAST_LOOK_ANGLES.computeIfAbsent(player.getName(), k -> new ConcurrentHashMap<>());
         return angles.get(entity.getUniqueId());
+    }
+
+    /**
+     * 计算目标位置
+     *
+     * @param entity 实体实例
+     * @param player 玩家
+     * @return 目标位置
+     */
+    public static Location calculateTargetLocation(EntityInstance entity, Player player, boolean isVillagerWithPassenger) {
+        Location target = player.getEyeLocation();
+        // 检查是否为村民且有乘客
+        if (isVillagerWithPassenger) {
+            target = ControllerLookAtPlayer.fixVillagerTarget(entity, target);
+        }
+        return target;
+    }
+
+    /**
+     * 计算朝向并向玩家发送更新包
+     *
+     * @param player 目标玩家
+     * @param entity 实体实例
+     * @param lookTarget 看向目标位置
+     */
+    public static void updatePlayerLook(Player player, EntityInstance entity, Location lookTarget, boolean onlyHorizontal) {
+        Location entityLoc = entity.getEyeLocation();
+        // 计算朝向向量
+        Vector direction = lookTarget.toVector().subtract(entityLoc.toVector());
+
+        // 计算 yaw 和 pitch
+        double x = direction.getX();
+        double y = direction.getY();
+        double z = direction.getZ();
+
+        // 计算 yaw (水平角度)
+        double yaw = Math.toDegrees(Math.atan2(-x, z));
+        // 计算 pitch (垂直角度)
+        double pitch = Math.toDegrees(Math.asin(-y / direction.length()));
+
+        // 如果只需要水平视角，将 pitch 设为 0
+        if (onlyHorizontal) {
+            pitch = 0;
+        }
+        float fixYaw = YawFixerKt.fixYaw(entity.getEntityType(), (float) yaw);
+        // 发送朝向更新包
+        INSTANCE.api().getMinecraftAPI().getEntityOperator().updateEntityLook(
+                player,
+                entity.getIndex(),
+                fixYaw,
+                (float) pitch,
+                true
+        );
+        // 记录最后的朝向角度
+        LAST_LOOK_ANGLES.computeIfAbsent(player.getName(), k -> new ConcurrentHashMap<>()).put(entity.getUniqueId(), new Angle(yaw, pitch));
     }
 
     @NotNull
@@ -142,50 +197,15 @@ public class ControllerLookAtPlayerWithPacket extends Controller {
             return;
         }
         boolean isVillagerWithPassenger = entity.getEntityType() == EntityTypes.VILLAGER && entity.hasPassengers();
-
         // 向所有可见玩家发送朝向更新
         for (Player player : entity.getVisiblePlayers()) {
             if (player.isValid() && player.getWorld().equals(entity.getWorld())) {
                 double distance = player.getLocation().distanceSquared(entity.getLocation());
                 if (distance <= lookDistance * lookDistance) {
-                    Location entityLoc = entity.getEyeLocation();
-                    Location target = player.getEyeLocation();
-                    
-                    // 检查是否为村民且有乘客
-                    if (isVillagerWithPassenger) {
-                        target = ControllerLookAtPlayer.fixVillagerTarget(entity, target);
-                    }
-                    
+                    Location target = calculateTargetLocation(entity, player, isVillagerWithPassenger);
                     ControllerLookEvent event = new ControllerLookEvent(getEntity(), player, target);
                     if (DefaultAdyeshachAPI.Companion.getLocalEventBus().callControllerLook(event)) {
-                        // 计算朝向向量
-                        Vector direction = event.getLookTarget().toVector().subtract(entityLoc.toVector());
-
-                        // 计算 yaw 和 pitch
-                        double x = direction.getX();
-                        double y = direction.getY();
-                        double z = direction.getZ();
-
-                        // 计算 yaw (水平角度)
-                        double yaw = Math.toDegrees(Math.atan2(-x, z));
-                        // 计算 pitch (垂直角度)
-                        double pitch = Math.toDegrees(Math.asin(-y / direction.length()));
-
-                        // 如果只需要水平视角，将 pitch 设为 0
-                        if (onlyHorizontal) {
-                            pitch = 0;
-                        }
-                        float fixYaw = YawFixerKt.fixYaw(entity.getEntityType(), (float) yaw);
-                        // 发送朝向更新包
-                        INSTANCE.api().getMinecraftAPI().getEntityOperator().updateEntityLook(
-                                player,
-                                entity.getIndex(),
-                                fixYaw,
-                                (float) pitch,
-                                true
-                        );
-                        // 记录最后的朝向角度
-                        LAST_LOOK_ANGLES.computeIfAbsent(player.getName(), k -> new ConcurrentHashMap<>()).put(entity.getUniqueId(), new Angle(yaw, pitch));
+                        updatePlayerLook(player, entity, event.getLookTarget(), onlyHorizontal);
                     }
                 }
             }
