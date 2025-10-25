@@ -46,6 +46,51 @@ public class ControllerLookAtPlayerWithPacket extends Controller {
         }
     }
 
+    /**
+     * 插值配置类
+     * 用于明确指定插值的起始角度和插值系数
+     */
+    public static class InterpolationConfig {
+        private final double startYaw;
+        private final double startPitch;
+        private final double factor;
+
+        /**
+         * 创建插值配置
+         *
+         * @param startYaw 起始 yaw 角度
+         * @param startPitch 起始 pitch 角度
+         * @param factor 插值系数 (0.0 - 1.0)
+         */
+        public InterpolationConfig(double startYaw, double startPitch, double factor) {
+            this.startYaw = startYaw;
+            this.startPitch = startPitch;
+            this.factor = Math.max(0.0, Math.min(1.0, factor));
+        }
+
+        /**
+         * 从现有角度创建插值配置
+         *
+         * @param angle 起始角度
+         * @param factor 插值系数 (0.0 - 1.0)
+         */
+        public InterpolationConfig(Angle angle, double factor) {
+            this(angle.yaw, angle.pitch, factor);
+        }
+
+        public double getStartYaw() {
+            return startYaw;
+        }
+
+        public double getStartPitch() {
+            return startPitch;
+        }
+
+        public double getFactor() {
+            return factor;
+        }
+    }
+
     @Expose
     protected final double lookDistance;
 
@@ -104,6 +149,7 @@ public class ControllerLookAtPlayerWithPacket extends Controller {
      * @param player 目标玩家
      * @param entity 实体实例
      * @param lookTarget 看向目标位置
+     * @param onlyHorizontal 是否只考虑水平方向
      */
     public static void updatePlayerLook(Player player, EntityInstance entity, Location lookTarget, boolean onlyHorizontal) {
         Location entityLoc = entity.getEyeLocation();
@@ -124,6 +170,7 @@ public class ControllerLookAtPlayerWithPacket extends Controller {
         if (onlyHorizontal) {
             pitch = 0;
         }
+
         float fixYaw = YawFixerKt.fixYaw(entity.getEntityType(), (float) yaw);
         // 发送朝向更新包
         INSTANCE.api().getMinecraftAPI().getEntityOperator().updateEntityLook(
@@ -135,6 +182,70 @@ public class ControllerLookAtPlayerWithPacket extends Controller {
         );
         // 记录最后的朝向角度
         LAST_LOOK_ANGLES.computeIfAbsent(player.getName(), k -> new ConcurrentHashMap<>()).put(entity.getUniqueId(), new Angle(yaw, pitch));
+    }
+
+    /**
+     * 计算朝向并向玩家发送更新包（使用 InterpolationConfig 进行精确插值）
+     * 当插值系数达到 1.0 时会自动更新 LAST_LOOK_ANGLES
+     *
+     * @param player 目标玩家
+     * @param entity 实体实例
+     * @param lookTarget 看向目标位置
+     * @param onlyHorizontal 是否只考虑水平方向
+     * @param config 插值配置，包含起始角度和插值系数
+     */
+    public static void updatePlayerLook(Player player, EntityInstance entity, Location lookTarget, boolean onlyHorizontal, InterpolationConfig config) {
+        Location entityLoc = entity.getEyeLocation();
+        // 计算朝向向量
+        Vector direction = lookTarget.toVector().subtract(entityLoc.toVector());
+
+        // 计算 yaw 和 pitch
+        double x = direction.getX();
+        double y = direction.getY();
+        double z = direction.getZ();
+
+        // 计算 yaw (水平角度)
+        double targetYaw = Math.toDegrees(Math.atan2(-x, z));
+        // 计算 pitch (垂直角度)
+        double targetPitch = Math.toDegrees(Math.asin(-y / direction.length()));
+
+        // 如果只需要水平视角，将 pitch 设为 0
+        if (onlyHorizontal) {
+            targetPitch = 0;
+        }
+
+        // 使用配置中的起始角度进行插值
+        double yaw = interpolateAngle(config.getStartYaw(), targetYaw, config.getFactor());
+        double pitch = config.getStartPitch() + (targetPitch - config.getStartPitch()) * config.getFactor();
+
+        float fixYaw = YawFixerKt.fixYaw(entity.getEntityType(), (float) yaw);
+        // 发送朝向更新包
+        INSTANCE.api().getMinecraftAPI().getEntityOperator().updateEntityLook(
+                player,
+                entity.getIndex(),
+                fixYaw,
+                (float) pitch,
+                true
+        );
+        // 当插值完成时（factor >= 1.0），更新 LAST_LOOK_ANGLES
+        if (config.getFactor() >= 1.0) {
+            LAST_LOOK_ANGLES.computeIfAbsent(player.getName(), k -> new ConcurrentHashMap<>()).put(entity.getUniqueId(), new Angle(yaw, pitch));
+        }
+    }
+
+    /**
+     * 插值两个角度（考虑角度的循环特性）
+     *
+     * @param from 起始角度
+     * @param to 目标角度
+     * @param factor 插值系数 (0.0 - 1.0)
+     * @return 插值后的角度
+     */
+    private static double interpolateAngle(double from, double to, double factor) {
+        // 计算最短角度差
+        double diff = ((to - from + 180) % 360 + 360) % 360 - 180;
+        // 进行插值
+        return from + diff * factor;
     }
 
     @NotNull
@@ -224,3 +335,4 @@ public class ControllerLookAtPlayerWithPacket extends Controller {
         return id() + ":" + String.format("%.2f", lookDistance) + "," + onlyHorizontal;
     }
 }
+
