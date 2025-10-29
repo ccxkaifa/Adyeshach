@@ -12,6 +12,7 @@ import ink.ptms.adyeshach.core.entity.type.minecraftVersion
 import ink.ptms.adyeshach.core.event.AdyeshachGameProfileGenerateEvent
 import ink.ptms.adyeshach.core.event.AdyeshachPlayerUUIDGenerateEvent
 import ink.ptms.adyeshach.core.util.getEnum
+import ink.ptms.adyeshach.impl.network.NetworkMineskin
 import ink.ptms.adyeshach.impl.util.ifTrue
 import org.bukkit.entity.Player
 import taboolib.common.platform.Schedule
@@ -187,14 +188,16 @@ abstract class DefaultHuman(entityTypes: EntityTypes) : DefaultEntityLiving(enti
             return
         }
         val skin = Adyeshach.api().getNetworkAPI().getSkin()
-        // 自动下载的玩家皮肤，会被分类到 ashcon 目录下
-        if (skin.hasTexture("ashcon/$name") || !skin.hasTexture(name)) {
-            skin.getTexture("ashcon/$name").thenAccept { setTexture(it.value(), it.signature()) }
+        // 启用 ashcon 缓存时，从 ashcon 中检索
+        if (NetworkMineskin.enableAshcon) {
+            // 自动下载的玩家皮肤，会被分类到 ashcon 目录下
+            if (skin.hasTexture("ashcon/$name") || !skin.hasTexture(name)) {
+                skin.getTexture("ashcon/$name").thenAccept { setTexture(it.value(), it.signature()) }
+                return
+            }
         }
-        // 主动上传
-        else {
-            skin.getTexture(name).thenAccept { setTexture(it.value(), it.signature()) }
-        }
+        // 主动上传的皮肤
+        skin.getTexture(name).thenAccept { setTexture(it.value(), it.signature()) }
     }
 
     override fun setTexture(texture: String, signature: String) {
