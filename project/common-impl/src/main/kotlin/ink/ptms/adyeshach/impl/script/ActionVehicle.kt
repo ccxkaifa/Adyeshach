@@ -8,7 +8,7 @@ import taboolib.module.kether.*
 
 @KetherParser(["vehicle"], namespace = "adyeshach", shared = true)
 internal fun vehicleParser() = scriptParser {
-    val method = it.expects("get", "has")
+    val method = it.expects("get", "get_cache", "has", "has_cache")
     actionNow {
         val script = script()
         if (script.getManager() == null || !script.isEntitySelected()) {
