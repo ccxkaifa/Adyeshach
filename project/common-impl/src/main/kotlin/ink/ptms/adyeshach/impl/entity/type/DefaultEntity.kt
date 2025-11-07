@@ -25,6 +25,8 @@ abstract class DefaultEntity(entityType: EntityTypes) : DefaultEntityInstance(en
                 viewPlayers.visible += viewer.name
                 // 创建客户端对应表
                 registerClientEntity(viewer)
+                // 添加到可见实体索引
+                updateVisibleEntityIndex(viewer.name, true)
                 // 生成实体
                 Adyeshach.api().getMinecraftAPI().getEntitySpawner().spawnEntity(viewer, entityType, index, normalizeUniqueId, position.toLocation())
                 // 强制更新一次视角朝向，确保让一些特殊的实体看向正确的位置
@@ -36,11 +38,25 @@ abstract class DefaultEntity(entityType: EntityTypes) : DefaultEntityInstance(en
         } else {
             prepareDestroy(viewer) {
                 viewPlayers.visible -= viewer.name
+                // 从可见实体索引中移除
+                updateVisibleEntityIndex(viewer.name, false)
                 // 销毁实体
                 Adyeshach.api().getMinecraftAPI().getEntityOperator().destroyEntity(viewer, index)
                 // 移除客户端对应表
                 unregisterClientEntity(viewer)
             }
+        }
+    }
+
+    /**
+     * 更新可见实体索引
+     */
+    protected fun updateVisibleEntityIndex(playerName: String, visible: Boolean) {
+        val finder = Adyeshach.api().getEntityFinder()
+        if (visible) {
+            finder.addVisibleEntity(playerName, this)
+        } else {
+            finder.removeVisibleEntity(playerName, this)
         }
     }
 

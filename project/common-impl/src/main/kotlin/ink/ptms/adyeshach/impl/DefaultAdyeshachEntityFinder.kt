@@ -32,6 +32,39 @@ class DefaultAdyeshachEntityFinder : AdyeshachEntityFinder {
     val api: AdyeshachAPI
         get() = Adyeshach.api()
 
+    /**
+     * 玩家可见实体索引
+     */
+    private val playerVisibleEntitiesIndex = ConcurrentHashMap<String, MutableSet<EntityInstance>>()
+
+    /**
+     * 添加实体到玩家的可见列表
+     */
+    override fun addVisibleEntity(playerName: String, entity: EntityInstance) {
+        playerVisibleEntitiesIndex.computeIfAbsent(playerName) { ConcurrentHashMap.newKeySet() }.add(entity)
+    }
+
+    /**
+     * 从玩家的可见列表中移除实体
+     */
+    override fun removeVisibleEntity(playerName: String, entity: EntityInstance) {
+        playerVisibleEntitiesIndex[playerName]?.remove(entity)
+    }
+
+    /**
+     * 清理玩家的所有可见实体索引
+     */
+    override fun clearPlayerVisibleEntities(playerName: String) {
+        playerVisibleEntitiesIndex.remove(playerName)
+    }
+
+    /**
+     * 从所有玩家的可见列表中移除实体（实体销毁时调用）
+     */
+    override fun removeEntityFromAllPlayers(entity: EntityInstance) {
+        playerVisibleEntitiesIndex.values.forEach { it.remove(entity) }
+    }
+
     override fun getEntity(player: Player?, match: Predicate<EntityInstance>): EntityInstance? {
         api.getPublicEntityManager(ManagerType.PERSISTENT).getEntity(match)?.let { return it }
         api.getPublicEntityManager(ManagerType.TEMPORARY).getEntity(match)?.let { return it }
@@ -52,8 +85,26 @@ class DefaultAdyeshachEntityFinder : AdyeshachEntityFinder {
     }
 
     override fun getVisibleEntities(player: Player, filter: Predicate<EntityInstance>): List<EntityInstance> {
-        return getEntities(player) {
-            it.getLocation().safeDistanceIgnoreY(player.location) <= it.visibleDistance && it.isVisibleViewer(player) && filter.test(it)
+        // 优化：直接从索引中获取该玩家的可见实体,避免遍历所有管理器
+        val visibleSet = playerVisibleEntitiesIndex[player.name]
+        if (visibleSet == null || visibleSet.isEmpty()) {
+            return emptyList()
+        }
+        val pLoc = player.location
+        // 从索引中过滤，只需要检查距离和额外的过滤条件
+        return visibleSet.filter { entity ->
+            // 快速距离检查（使用平方距离避免开方运算）
+            val loc = entity.position
+            // 先检查世界是否相同
+            if (loc.world.name != pLoc.world.name) {
+                return@filter false
+            }
+            // 使用平方距离比较，避免 sqrt 计算
+            val dx = loc.x - pLoc.x
+            val dz = loc.z - pLoc.z
+            val distanceSquared = dx * dx + dz * dz
+            val visibleDistanceSquared = entity.visibleDistance * entity.visibleDistance
+            distanceSquared <= visibleDistanceSquared && filter.test(entity)
         }
     }
 
@@ -112,6 +163,8 @@ class DefaultAdyeshachEntityFinder : AdyeshachEntityFinder {
         @SubscribeEvent
         fun onQuit(e: PlayerQuitEvent) {
             clientEntityMap.remove(e.player.name)
+            // 清理玩家的可见实体索引
+            Adyeshach.api().getEntityFinder().clearPlayerVisibleEntities(e.player.name)
         }
 
         @Awake(LifeCycle.CONST)

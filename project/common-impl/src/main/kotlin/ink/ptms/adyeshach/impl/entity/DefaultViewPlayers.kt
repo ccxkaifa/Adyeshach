@@ -3,7 +3,7 @@ package ink.ptms.adyeshach.impl.entity
 import ink.ptms.adyeshach.core.entity.ViewPlayers
 import ink.ptms.adyeshach.impl.manager.DefaultManagerHandler.playersInGameTick
 import org.bukkit.entity.Player
-import java.util.concurrent.ConcurrentSkipListSet
+import java.util.concurrent.ConcurrentHashMap
 import java.util.function.Function
 
 /**
@@ -15,9 +15,11 @@ import java.util.function.Function
  */
 class DefaultViewPlayers(val entityInstance: DefaultEntityInstance) : ViewPlayers {
 
-    override val viewers = ConcurrentSkipListSet<String>()
+    // 优化：使用 ConcurrentHashMap.newKeySet() 替代 ConcurrentSkipListSet
+    // O(1) 查找性能 vs O(log n)
+    override val viewers = ConcurrentHashMap.newKeySet<String>()
 
-    override val visible = ConcurrentSkipListSet<String>()
+    override val visible = ConcurrentHashMap.newKeySet<String>()
 
     override fun getPlayers(): List<Player> {
         return playersInGameTick.filter { it.name in viewers }
