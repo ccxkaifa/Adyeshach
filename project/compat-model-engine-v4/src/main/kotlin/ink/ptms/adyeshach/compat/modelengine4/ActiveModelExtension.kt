@@ -227,6 +227,7 @@ internal fun ModelEngine.createModel() {
     // 销毁原版实体
     // despawn()
     // 创建模型
+    modelEngineUniqueId = normalizeUniqueId
     ModelEngineAPI.createModeledEntity(entity) { model ->
         model.isBaseEntityVisible = false
         // 设置是否强制显示
