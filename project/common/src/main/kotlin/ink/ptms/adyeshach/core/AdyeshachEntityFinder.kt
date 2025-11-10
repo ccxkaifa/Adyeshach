@@ -93,17 +93,17 @@ interface AdyeshachEntityFinder {
     /**
      * 添加实体到玩家的可见列表
      */
-    fun addVisibleEntity(playerName: String, entity: EntityInstance)
+    fun addVisibleEntity(player: Player, entity: EntityInstance)
 
     /**
      * 从玩家的可见列表中移除实体
      */
-    fun removeVisibleEntity(playerName: String, entity: EntityInstance)
+    fun removeVisibleEntity(player: Player, entity: EntityInstance)
 
     /**
      * 清理玩家的所有可见实体索引
      */
-    fun clearPlayerVisibleEntities(playerName: String)
+    fun clearPlayerVisibleEntities(player: Player)
 
     /**
      * 从所有玩家的可见列表中移除实体（实体销毁时调用）

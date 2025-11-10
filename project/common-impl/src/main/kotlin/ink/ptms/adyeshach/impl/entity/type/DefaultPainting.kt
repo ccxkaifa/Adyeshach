@@ -39,14 +39,14 @@ abstract class DefaultPainting(entityTypes: EntityTypes) : DefaultEntity(entityT
                 viewPlayers.visible += viewer.name
                 registerClientEntity(viewer)
                 // 添加到可见实体索引
-                updateVisibleEntityIndex(viewer.name, true)
+                updateVisibleEntityIndex(viewer, true)
                 api.getEntitySpawner().spawnEntityPainting(viewer, index, normalizeUniqueId, position.toLocation(), direction, painting)
             }
         } else {
             prepareDestroy(viewer) {
                 viewPlayers.visible -= viewer.name
                 // 从可见实体索引中移除
-                updateVisibleEntityIndex(viewer.name, false)
+                updateVisibleEntityIndex(viewer, false)
                 // 销毁实体
                 api.getEntityOperator().destroyEntity(viewer, index)
                 // 移除客户端对应表
